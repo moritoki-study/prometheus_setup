@@ -1,0 +1,9 @@
+groups:
+- name: test_httpserver_request
+  rules:
+  - alert: HighRequest
+    expr: rate(a_http_request_count_total{instance="localhost:8081", job="test_httpserver", testlabel="World"}[5m]) > 0.01
+    labels:
+      severity: critical
+    annotations:
+      summary: Request to world Page exceeded threshold

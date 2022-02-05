@@ -1,0 +1,23 @@
+global:
+  # Slack の webhook URL の指定
+  slack_api_url: 'https://hooks.slack.com/services/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'
+
+route:
+  receiver: 'slack'
+  # 同一アラート名、インスタンス名、エラーレベルでグループ化、アラートを同じ種類とみなす条件
+  group_by: ['alertname', 'instance', 'severity']
+  # 同じ種類のアラートを1つのアラート群としてにまとめる時間
+  group_wait: 30s
+  # 同じ種類のアラートが発生した時に次回通知するまでの時間
+  group_interval:  5m
+  # 一度通知したアラートは10分おきに再通知
+  repeat_interval: 10m
+
+receivers:
+  - name: 'slack'
+    slack_configs:
+    - channel: '#notice'
+      title: '{{ if eq .Status "firing" }}[FIRING]{{else}}[RESOLVED]{{end}} {{ .GroupLabels.alertname }}'
+      text: '{{ if eq .Status "firing" }}{{ .CommonAnnotations.firing_text }}{{else}}{{ .CommonAnnotations.resolved_text }}{{end}}'
+      # 正常に戻った際に通知をするか
+      send_resolved: true

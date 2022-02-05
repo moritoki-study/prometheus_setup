@@ -1,0 +1,9 @@
+groups:
+- name: test_httpserver_log
+  rules:
+  - alert: EmptyNameFound
+    expr: increase(a_httpserver_log_hello_total{name=""}[1m]) > 0
+    labels:
+      severity: critical
+    annotations:
+      summary: Outputs a log with an empty name

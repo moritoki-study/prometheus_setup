@@ -1,0 +1,16 @@
+groups:
+- name: example.com
+  rules:
+    - alert: instance_down
+      # PromQLを記述。起動していないインスタンスを検出するPromQL。
+      expr: up == 0
+      # 5分間応答がない場合アラートを上げる
+      for: 5m
+      labels:
+        severity: critical
+      # エラー文言
+      annotations:
+        # 異常時の通知メッセージ
+        firing_text: "[{{ $labels.env }}] {{ $labels.instance }} has been down for more than 5 minutes."
+        # リカバリー時の通知メッセージ
+        resolved_text: "[{{ $labels.env }}] {{ $labels.instance }} has recoverd."
