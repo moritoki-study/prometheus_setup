@@ -83,7 +83,8 @@ services:
 
 # ----------- http_server start ----------- #
   test_httpserver:
-    image: tmoritoki0227/test_httpserver:latest 
+    # image: tmoritoki0227/test_httpserver:latest 
+    image: public.ecr.aws/l8s6z2n6/test_httpserver:latest
     container_name: test_httpserver 
     hostname: test_httpserver 
     ports: 
