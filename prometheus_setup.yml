@@ -1,0 +1,514 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: 
+  VPC and Subnet Create
+
+Metadata: # 入力パラメータが多いとき、Metadataを使って入力しやすいように順番等を制御する。設定しなくても動作可能
+  "AWS::CloudFormation::Interface":  # 入力パラメータのグループ化と順序が指定
+    ParameterGroups: 
+      - Label: 
+          default: "Project Name Prefix" # 使ってみて確認
+        Parameters: 
+          - PJPrefix # 入力項目
+      - Label: 
+          default: "Network Configuration"
+        Parameters: 
+          - VPCCIDR  # 入力項目、VPCのCIDRを設定
+          - PublicSubnetACIDR # 入力項目、PublicSubnetAのCIDRを設定
+          - PublicSubnetCCIDR # 入力項目、PublicSubnetCのCIDRを設定（今回はネットワーク作るだけ）
+          - PrivateSubnetACIDR # 入力項目、PrivateSubnetAのCIDRを設定（今回はネットワーク作るだけ）
+          - PrivateSubnetCCIDR # 入力項目、PrivateSubnetCのCIDRを設定（今回はネットワーク作るだけ）
+          - KeyName # 秘密鍵
+          - MyIP # 自宅のグローバルIP
+          - Environment # prd or stg
+
+    ParameterLabels: 
+      VPCCIDR: # Parameters の項目と一致させる
+        default: "VPC CIDR" # 入力項目の上に表示されるラベル名だと思われる
+      PublicSubnetACIDR: 
+        default: "PublicSubnetA CIDR"
+      PublicSubnetCCIDR: 
+        default: "PublicSubnetC CIDR"
+      PrivateSubnetACIDR: 
+        default: "PrivateSubnetA CIDR"
+      PrivateSubnetCCIDR: 
+        default: "PrivateSubnetC CIDR"
+      KeyName:
+        default: "rsa"
+      MyIP:
+        default: "HomeGlobalIp CIDR"
+      Environment:
+        default: "Environment"
+
+# ------------------------------------------------------------#
+# Input Parameters
+# ------------------------------------------------------------# 
+# 入力パラメータの型や、デフォルト値の設定と思われる
+Parameters:
+  PJPrefix: # Parametersの項目と一致させる　　VPC、サブネット名の頭に付く文字列
+    Type: String
+    Default: "prometheus-study"
+
+  VPCCIDR:
+    Type: String
+    Default: "10.1.0.0/16" # デフォルト値  利用するIPアドレスの範囲を設定、10.0.0.0 - 10.0.255.255、IT総数65,536
+
+  PublicSubnetACIDR: # 今回はここだけ使う
+    Type: String
+    Default: "10.1.10.0/24" # デフォルト値 10.1.10.0 - 10.1.10.255
+
+  PublicSubnetCCIDR:
+    Type: String
+    Default: "10.1.20.0/24" # デフォルト値 10.1.20.0 - 10.1.20.255
+
+  PrivateSubnetACIDR:
+    Type: String
+    Default: "10.1.100.0/24" # デフォルト値 10.1.100.0 - 10.1.100.255
+
+  PrivateSubnetCCIDR:
+    Type: String
+    Default: "10.1.200.0/24" # デフォルト値 10.1.200.0 - 10.1.200.255
+
+  KeyName: # 自分の秘密鍵を画面で選択することになる.対応した公開鍵がサーバに配布される
+    Description: The EC2 Key Pair to allow SSH access to the instance
+    Type: "AWS::EC2::KeyPair::KeyName"
+
+  MyIP: # awsへアクセスするIPを設定
+    Description: IP address allowed to access EC2
+    Default: "106.72.134.33/32" # デフォルト値
+    Type: String
+
+  Environment: # 環境によってパラメータを変えたいときに利用する。
+    Description: Type of this environment.
+    Type: String
+    Default: prd # productionの略、本テンプレートではprdとして扱う。stgは定義していない
+    AllowedValues:
+      - prd 
+      - stg
+
+Mappings:
+  # https://dev.classmethod.jp/articles/cloudformation-ec2-build/
+  prd:
+    PublicSubnet1a: { ID: subnet-xxxxxx }
+
+    OSSettings:
+      Locale: ja_JP.utf8
+      TimeZone: "Asia/Tokyo"
+    PrometheusEC2:
+      HostName: prometheus.host
+      PrivateIpAddress: 10.1.10.100
+      InstanceType: t2.micro
+      AmiId: ami-08a8688fb7eacb171 # Amazon Linux 2 AMI (HVM) - Kernel 5.10, SSD Volume Type
+      # SecurityGroupId: sg-xxxxxxx
+  # stg:
+    # PublicSubnet1a: { ID: subnet-xxxxxx }
+
+Resources: 
+# ------------------------------------------------------------#
+#  VPC
+# ------------------------------------------------------------#
+# VPC Create
+  VPC: # VPCの論理名
+    Type: "AWS::EC2::VPC"
+    Properties: 
+      CidrBlock: !Ref VPCCIDR # UIの入力パラメータから受け取った値
+      EnableDnsSupport: "true"
+      EnableDnsHostnames: "true"
+      InstanceTenancy: default # VPC 内に起動されるインスタンスの許可されているテナンシー（とりあえずデフォルトで、結局何がが許可されているのか不明である
+      Tags: 
+        - Key: Name # 画面上どこの表示になるか後で確認
+          Value: !Sub "${PJPrefix}-vpc"
+
+# InternetGateway Create
+  InternetGateway: 
+    Type: "AWS::EC2::InternetGateway"
+    Properties: 
+      Tags: 
+        - Key: Name
+          Value: !Sub "${PJPrefix}-igw" # 画面上どこの表示になるか後で確認
+
+# IGW Attach
+  InternetGatewayAttachment: 
+    Type: "AWS::EC2::VPCGatewayAttachment"
+    Properties: 
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC 
+
+# ------------------------------------------------------------#
+#  Subnet
+# ------------------------------------------------------------#          
+# Public SubnetA Create（今回はここだけにインスタンス設置）
+  PublicSubnetA: 
+    Type: "AWS::EC2::Subnet"
+    Properties: 
+      # AvailabilityZone: "ap-northeast-1a"
+      AvailabilityZone: !Select
+        - 0 # 配列の番号。配列[ap-northeast-1a, ap-northeast-1c, ap-northeast-1d]　らしい
+        - Fn::GetAZs: !Ref AWS::Region
+      CidrBlock: !Ref PublicSubnetACIDR # ネットワークの範囲、UIの入力パラメータから受け取った値
+      VpcId: !Ref VPC 
+      Tags: 
+        - Key: Name
+          Value: !Sub "${PJPrefix}-public-subnet-a" # 画面上どこの表示になるか後で確認
+
+# Public SubnetC Create
+  PublicSubnetC: 
+    Type: "AWS::EC2::Subnet"
+    Properties: 
+      # AvailabilityZone: "ap-northeast-1c"
+      AvailabilityZone: !Select
+        - 1 # 配列の番号。配列[ap-northeast-1a, ap-northeast-1c, ap-northeast-1d]　らしい
+        - Fn::GetAZs: !Ref AWS::Region
+      CidrBlock: !Ref PublicSubnetCCIDR # ネットワークの範囲、UIの入力パラメータから受け取った値
+      VpcId: !Ref VPC 
+      Tags: 
+        - Key: Name
+          Value: !Sub "${PJPrefix}-public-subnet-c"
+
+# Private SubnetA Create
+  PrivateSubnetA: 
+    Type: "AWS::EC2::Subnet"
+    Properties: 
+      # AvailabilityZone: "ap-northeast-1a"
+      AvailabilityZone: !Select
+        - 0 # 配列の番号。配列[ap-northeast-1a, ap-northeast-1c, ap-northeast-1d]　らしい
+        - Fn::GetAZs: !Ref AWS::Region
+      CidrBlock: !Ref PrivateSubnetACIDR # ネットワークの範囲、UIの入力パラメータから受け取った値
+      VpcId: !Ref VPC 
+      Tags: 
+        - Key: Name
+          Value: !Sub "${PJPrefix}-private-subnet-a"
+
+# Private SubnetC Create
+  PrivateSubnetC: 
+    Type: "AWS::EC2::Subnet"
+    Properties: 
+      # AvailabilityZone: "ap-northeast-1c"
+      AvailabilityZone: !Select
+        - 1 # 配列の番号。配列[ap-northeast-1a, ap-northeast-1c, ap-northeast-1d]　らしい
+        - Fn::GetAZs: !Ref AWS::Region
+      CidrBlock: !Ref PrivateSubnetCCIDR # ネットワークの範囲、UIの入力パラメータから受け取った値
+      VpcId: !Ref VPC 
+      Tags: 
+        - Key: Name
+          Value: !Sub "${PJPrefix}-private-subnet-c"
+
+# ------------------------------------------------------------#
+#  RouteTable
+# ------------------------------------------------------------#
+# 全部同じ設定    
+# Public RouteTableA Create
+  PublicRouteTableA: 
+    Type: "AWS::EC2::RouteTable"
+    Properties: 
+      VpcId: !Ref VPC 
+      Tags: 
+        - Key: Name
+          Value: !Sub "${PJPrefix}-public-route-a"
+
+# Public RouteTableC Create
+  PublicRouteTableC: 
+    Type: "AWS::EC2::RouteTable"
+    Properties: 
+      VpcId: !Ref VPC 
+      Tags: 
+        - Key: Name
+          Value: !Sub "${PJPrefix}-public-route-c"
+
+# Private RouteTableA Create
+  PrivateRouteTableA: 
+    Type: "AWS::EC2::RouteTable"
+    Properties: 
+      VpcId: !Ref VPC 
+      Tags: 
+        - Key: Name
+          Value: !Sub "${PJPrefix}-private-route-a"
+
+# Private RouteTableC Create
+  PrivateRouteTableC: 
+    Type: "AWS::EC2::RouteTable"
+    Properties: 
+      VpcId: !Ref VPC 
+      Tags: 
+        - Key: Name
+          Value: !Sub "${PJPrefix}-private-route-c"
+
+# ------------------------------------------------------------#
+# Routing
+# ------------------------------------------------------------#
+# パブリックサブネットだけ、インターネット繋がるようにする設定
+# PublicRouteA Create
+  PublicRouteA: 
+    Type: "AWS::EC2::Route"
+    Properties: 
+      RouteTableId: !Ref PublicRouteTableA 
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref InternetGateway # 0.0.0.0/0への通信、つまり扱っているCIDR以外の通信は外部インターネットに流すということ
+
+# PublicRouteC Create
+  PublicRouteC: 
+    Type: "AWS::EC2::Route"
+    Properties: 
+      RouteTableId: !Ref PublicRouteTableC 
+      DestinationCidrBlock: "0.0.0.0/0" # 0.0.0.0/0への通信、つまり扱っているCIDR以外の通信は外部インターネットに流すということ
+      GatewayId: !Ref InternetGateway 
+
+# ------------------------------------------------------------#
+# RouteTable Associate（ルートテーブルをサブネットに紐づける設定）
+# ------------------------------------------------------------# 
+# PublicRouteTable Associate SubnetA
+  PublicSubnetARouteTableAssociation: # 10.1.10.0/24の範囲と、外部インターネット接続可能
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties: 
+      SubnetId: !Ref PublicSubnetA 
+      RouteTableId: !Ref PublicRouteTableA
+
+# PublicRouteTable Associate SubnetC
+  PublicSubnetCRouteTableAssociation: # 10.1.20.0/24の範囲と、外部インターネット接続可能
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties: 
+      SubnetId: !Ref PublicSubnetC 
+      RouteTableId: !Ref PublicRouteTableC
+
+# PrivateRouteTable Associate SubnetA
+  PrivateSubnetARouteTableAssociation: # 10.1.100.0/24の範囲でしか通信不可
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties: 
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateRouteTableA 
+
+# PrivateRouteTable Associate SubnetC
+  PrivateSubnetCRouteTableAssociation: # 10.1.200.0/24の範囲でしか通信不可
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties: 
+      SubnetId: !Ref PrivateSubnetC
+      RouteTableId: !Ref PrivateRouteTableC
+
+# ここまでは上記固定の書き方で問題ない
+
+
+
+
+# ------------------------------------------------------------#
+# EC2 Setting
+# ------------------------------------------------------------#
+  PrometheusSecurityGroup01: # 英数字のみ
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: Prometheus-Security-Group01
+      GroupDescription: Allow SSH and HTTP access only MyIP
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        # http
+        - IpProtocol: tcp
+          FromPort: 80 # ２つセット？通常は同じにしておこう
+          ToPort: 80 # ２つセット？通常は同じにしておこう
+          CidrIp: !Ref MyIP # httpのアクセスを自宅のIPからに限定する
+          Description: "http ingress"
+        # ssh
+        - IpProtocol: tcp
+          FromPort: 22 # ２つセット？通常は同じにしておこう
+          ToPort: 22 # ２つセット？通常は同じにしておこう
+          CidrIp: !Ref MyIP # sshのアクセスを自宅のIPからに限定する
+          Description: "ssh ingress"
+        # prometheus
+        - IpProtocol: tcp
+          FromPort: 9090
+          ToPort: 9090
+          # CidrIp: !Ref MyIP # sshのアクセスを自宅のIPからに限定する
+          CidrIp: '0.0.0.0/0'
+          Description: "prometheus ingress"
+        # node-exporter
+        - IpProtocol: tcp
+          FromPort: 9100
+          ToPort: 9100
+          # CidrIp: !Ref MyIP # sshのアクセスを自宅のIPからに限定する
+          CidrIp: '0.0.0.0/0'
+          Description: "node-exporter ingress"    
+        # grafana
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          # CidrIp: !Ref MyIP # sshのアクセスを自宅のIPからに限定する
+          CidrIp: '0.0.0.0/0'
+          Description: "grafana ingress"       
+        # alertmanager
+        - IpProtocol: tcp
+          FromPort: 9093
+          ToPort: 9093
+          # CidrIp: !Ref MyIP # sshのアクセスを自宅のIPからに限定する
+          CidrIp: '0.0.0.0/0'
+          Description: "alertmanager ingress"
+        # blackbox_exporter
+        - IpProtocol: tcp
+          FromPort: 9115
+          ToPort: 9115
+          # CidrIp: !Ref MyIP # sshのアクセスを自宅のIPからに限定する
+          CidrIp: '0.0.0.0/0'
+          Description: "blackbox_exporter ingress"
+        # grok_exporter用
+        - IpProtocol: tcp
+          FromPort: 9144
+          ToPort: 9144
+          # CidrIp: !Ref MyIP # sshのアクセスを自宅のIPからに限定する
+          CidrIp: '0.0.0.0/0'
+          Description: "grok_exporter ingress"  
+        # test_httpserver用
+        - IpProtocol: tcp
+          FromPort: 9144
+          ToPort: 9144
+          # CidrIp: !Ref MyIP # sshのアクセスを自宅のIPからに限定する
+          CidrIp: '0.0.0.0/0'
+          Description: "test_httpserver ingress"               
+  PrometheusEC2:
+    Type: AWS::EC2::Instance
+    Properties:
+      KeyName: !Ref KeyName
+      # DisableApiTermination: 
+      # ImageId: ami-00d101850e971728d # amazon Linux
+      ImageId: !FindInMap [ !Ref Environment, PrometheusEC2, AmiId ]
+      # InstanceType: t2.micro
+      InstanceType: !FindInMap [ !Ref Environment, PrometheusEC2, InstanceType ]
+      # Monitoring: true|false
+      # PrivateIpAddress: !FindInMap [ !Ref Environment, PrometheusEC2, PrivateIpAddress ]
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: "true" # 自動でpublic IPを取得、DNS
+          DeviceIndex: "0"
+          SubnetId: !Ref PublicSubnetA # PublicSubnetAに所属する
+          PrivateIpAddress: !FindInMap [ !Ref Environment, PrometheusEC2, PrivateIpAddress ]
+          GroupSet:
+            - !Ref PrometheusSecurityGroup01
+      UserData: 
+        Fn::Base64: !Sub # !Subの意味がわからない。cloud-initのログの場所/var/log/cloud-init-output.log
+          - |
+            #!/bin/bash -ex
+
+            # timezon設定
+            timedatectl set-timezone ${TimeZone}
+
+            # hostname設定
+            hostnamectl set-hostname --static ${HostName}
+            echo 'preserve_hostname: true' >> /etc/cloud/cloud.cfg
+              
+            # locale
+            localectl set-locale LANG=${Locale}
+
+            # docker,docker-composeをインストール
+            yum install -y git
+            yum install -y docker
+            systemctl start docker
+            systemctl status docker
+            systemctl enable docker
+            usermod -a -G docker ec2-user
+            curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            chmod +x /usr/local/bin/docker-compose
+            docker-compose --version
+            # docker グループを作成。作成済みのため、コメントアウト
+            # groupadd docker
+            # dockerグループにユーザを追加。$USERが設定されてないため、コメントアウト
+            # gpasswd -a $USER docker
+            gpasswd -a ec2-user docker
+            systemctl restart docker
+            
+            # prometheusのデータをcloneしておく。/dataに展開
+            # git clone https://github.com/moritoki-study/prometheus_setup.git /home/ec2-user/prometheus_setup
+            git clone https://github.com/moritoki-study/prometheus_setup.git
+            cd /prometheus_setup
+            tar cvfz data.tar.gz data
+            tar xfvz data.tar.gz -C /
+
+            # セキュリティアップデート。時間がかかるので省略
+            # yum update -y
+            # reboot
+          
+          # たぶんここでmappingのデータを取得している。HostNameがデータを格納する変数名？
+          - {
+                HostName: !FindInMap [ !Ref Environment, PrometheusEC2, HostName ], 
+                TimeZone: !FindInMap [ !Ref Environment, OSSettings, TimeZone ], 
+                Locale: !FindInMap [ !Ref Environment, OSSettings, Locale ]
+            }   
+      Tags:
+        - Key: Name # マネジメントコンソールに表示されるEC2の名前だと思う
+          Value: !FindInMap [ !Ref Environment, PrometheusEC2, HostName ]
+
+# ------------------------------------------------------------#
+# Output Parameters
+# ------------------------------------------------------------#
+# スタック作成後に、画面に情報を出してくれる設定              
+Outputs: # ファイルの最後に書かないとエラーかもしれない
+# VPC
+  VPC: # 作成したVPC名を表示.ここが出力画面のキー名になっている
+    Value: !Ref VPC # 出力したいリソースの物理IDを指定している？
+    Export:
+      Name: !Sub "${PJPrefix}-vpc" # 出力したい項目。エクスポート名となる。環境変数に入れたということか？なくても動きそう
+
+  VPCCIDR: # 作成したVPCのCIDR（扱うネットワーク範囲）を表示
+    Value: !Ref VPCCIDR
+    Export:
+      Name: !Sub "${PJPrefix}-vpc-cidr"
+
+# Subnet
+  PublicSubnetA: # 作成したパブリックサブネット(PublicSubnetA)の名前を表示
+    Value: !Ref PublicSubnetA
+    Export:
+      Name: !Sub "${PJPrefix}-public-subnet-a"
+
+  PublicSubnetACIDR: # 作成したパブリックサブネット(PublicSubnetA)のCIDR（扱うネットワーク範囲）を表示
+    Value: !Ref PublicSubnetACIDR
+    Export:
+      Name: !Sub "${PJPrefix}-public-subnet-a-cidr"
+
+  PublicSubnetC: 
+    Value: !Ref PublicSubnetC
+    Export:
+      Name: !Sub "${PJPrefix}-public-subnet-c"
+
+  PublicSubnetCCIDR:
+    Value: !Ref PublicSubnetCCIDR
+    Export:
+      Name: !Sub "${PJPrefix}-public-subnet-c-cidr"
+
+  PrivateSubnetA: # 作成したプライベートサブネット(PrivateSubnetA)の名前を表示
+    Value: !Ref PrivateSubnetA
+    Export:
+      Name: !Sub "${PJPrefix}-private-subnet-a"
+
+  PrivateSubnetACIDR: # 作成したプライベートサブネット(PublicSubnetA)のCIDR（扱うネットワーク範囲）を表示
+    Value: !Ref PrivateSubnetACIDR
+    Export:
+      Name: !Sub "${PJPrefix}-private-subnet-a-cidr"
+
+  PrivateSubnetC:
+    Value: !Ref PrivateSubnetC
+    Export:
+      Name: !Sub "${PJPrefix}-private-subnet-c"
+
+  PrivateSubnetCCIDR:
+    Value: !Ref PrivateSubnetCCIDR
+    Export:
+      Name: !Sub "${PJPrefix}-private-subnet-c-cidr"
+
+# Route
+  PublicRouteTableA:
+    Value: !Ref PublicRouteTableA
+    Export:
+      Name: !Sub "${PJPrefix}-public-route-a" # なんだろう？
+
+  PublicRouteTableC:
+    Value: !Ref PublicRouteTableC
+    Export:
+      Name: !Sub "${PJPrefix}-public-route-c"
+
+  PrivateRouteTableA:
+    Value: !Ref PrivateRouteTableA
+    Export:
+      Name: !Sub "${PJPrefix}-private-route-a"
+
+  PrivateRouteTableC:
+    Value: !Ref PrivateRouteTableC
+    Export:
+      Name: !Sub "${PJPrefix}-private-route-c"
+
+# PublicIP
+  PrometheusEC2PublicIP:
+    Value: !GetAtt PrometheusEC2.PublicIp
+    Description: Public IP of EC2 instance
