@@ -11,6 +11,11 @@ global:
     monitor: 'alert-monitor'
 
 # 監視ルールファイルの場所
+# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
+# <<訳>>globalで設定したevaluation_intervalに従って定期的に評価する。
+# <<解説>>Prometheusが取得したメトリクスに対する評価のルール設定ファイルを指定します。
+#        先に設定したevaluation_intervalの取得間隔で参照するファイルとなります。
+#        また、本ファイルがymlなので、記述順にルールの重みづけがされます。
 rule_files:
   - /etc/prometheus/alerting_rules/alert_sample.yml
   - /etc/prometheus/alerting_rules/blackbox.yml
@@ -19,6 +24,10 @@ rule_files:
   - /etc/prometheus/alerting_rules/test_httpserver_request.yml
 
 # AlertManagerの設定
+# <<解説>> Prometheusサーバがアラート送信(push)するAlertmanagerインスタンスを指定します。
+#         また、Alertmanagerとの通信方法を設定するためのパラメータ設定も行えます。
+#         Alertmanagerはstatic_configsで静的に設定することも、サポートされている
+#         service検出メカニズムを使用して動的に検出することもできます。
 # https://tech-lab.sios.jp/archives/16604
 alerting:
   alertmanagers:
@@ -26,123 +35,75 @@ alerting:
       static_configs:
         - targets:
           # AlertManagerを動作させているホストのIPアドレス/Host名:Port番号
-          # - alertmanager:9093
-          - 172.31.13.240:9093 # ec2のプライベートIP: 9003:alertmanagerのポート
+          - alertmanager:9093 # これはdocker-composeのlabel。これで通信可能である ping alertmanager等。別ホストにalertmanagerのコンテナがある場合は無理
+          # - 192.168.0.40:9093 # ec2のプライベートIP: 9003:alertmanagerのポート
+          # - 10.1.10.100:9093 # ec2のプライベートIP: 9003:alertmanagerのポート
 
-# 172.31.13.240と指定すると動かない。なぜだろう
+# A scrape configuration containing exactly one endpoint to scrape:
+# Here it's Prometheus itself.
+# <<解説>>targets: Prometheus が情報を取得する対象のホスト名もしくはIPアドレスと、ポート番号を設定する
+#        主な設定対象はexporter。
 scrape_configs:
-  - job_name: "node_exporter"
+  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+  - job_name: "prometheus" # これはどういう監視なの？prometheusサーバからmetricsを取得できているかチェック？
+
+    # metrics_path defaults to '/metrics'
+    # scheme defaults to 'http'.
+
     static_configs:
-      - targets: ["172.31.13.240:9100"]
-  - job_name: "blackbox_exporter_tcp"
+      - targets:
+        -  prometheus:9090
+      # - targets: ["10.1.10.100:9090"]
+
+# add to scrape_configs start
+  - job_name: "node_exporter" # これはどういう監視なの？node_exporterつまり(webサーバ）からmetricsを取得できているかチェック？job_name: "prometheus"と同じだよね？
+    static_configs:
+      - targets:
+        -  node-exporter:9100
+        # - targets: ["10.1.10.100:9100"] # webサーバ？
+  - job_name: "blackbox_exporter_tcp" # おそらく死活監視 監視対象はWebサーバ？
     metrics_path: /probe
     params:
       module: [tcp_connect]
     static_configs:
       - targets:
-        - 172.31.13.240:8080
+        - test_httpserver:8080 # 監視対象のWebサーバ？
+        # - 10.1.10.100:8080 # 監視対象のWebサーバ？
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
       - source_labels: [__param_target]
         target_label: instance
       - target_label: __address__
-        replacement: 172.31.13.240:9115 # blackbox_exporterが稼働するホスト？
-  - job_name: "blackbox_exporter_http"
+        replacement: blackbox_exporter:9115 # blackbox_exporterが稼働するホスト？https://qiita.com/Esfahan/items/82dd496f1e150f089950
+  - job_name: "blackbox_exporter_http" # おそらく死活監視 監視対象はWebサーバ？
     metrics_path: /probe
     params:
       module: [http_2xx]
     static_configs:
       - targets:
-        - 172.31.13.240:8081/metrics
+        - test_httpserver:8081/metrics # 監視対象のWebサーバ？
+        # - 10.1.10.100:8081/metrics # 監視対象のWebサーバ？
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
       - source_labels: [__param_target]
         target_label: instance
       - target_label: __address__
-        replacement: 172.31.13.240:9115 # blackbox_exporterが稼働するホスト？
-  - job_name: "grok_exporter"
+        replacement: blackbox_exporter:9115 # blackbox_exporterが稼働するホスト？
+  - job_name: "grok_exporter" # ログ監視？  (webサーバ）からmetricsを取得できているかチェック？
     static_configs:
-      - targets: ["172.31.13.240:9144"]
-    metric_relabel_configs:  
+      - targets: ["grok_exporter:9144"] # 監視対象のWebサーバ？
+    metric_relabel_configs:
       - source_labels: [__name__]
         regex: ^go_.*
         action: drop
-  - job_name: "test_httpserver"
+  - job_name: "test_httpserver" # (webサーバ）からmetricsを取得できているかチェック？
     static_configs:
-      - targets: ["172.31.13.240:8081"]
+      - targets: ["test_httpserver:8081"] # 監視対象のWebサーバ？
+      # - targets: ["10.1.10.100:8081"]
     metric_relabel_configs:
       - source_labels: [__name__]
         regex: ^a_.*
         action: keep
-
-
-
-# メトリクス対象(サーバー)の設定（node_exporterの設定）
-# 全てのコンテナに対して実施
-#scrape_configs:
-#  - job_name: prometheus # 監視対象ルールの名前だと思われる
-#    metrics_path: /metrics # メトリクス監視であれば固定だろう
-#    static_configs:
-#      - targets: # 監視対象のサーバの設定
-#        # prometheusサーバー(今回インストールしたprometheus自身)
-#        - 172.31.13.240:9090 # ec2のプライベートIP, 9090:prometheusサーバのポート
-#  - job_name: node-exporter
-#    metrics_path: /metrics
-#    static_configs:
-#      - targets:
-#        - 172.31.13.240:9100
-#  - job_name: grafana
-#    metrics_path: /metrics
-#    static_configs:
-#      - targets:
-#        - 172.31.13.240:3000
-#  - job_name: alertmanager
-#    metrics_path: /metrics
-#    static_configs:
-#      - targets:
-#        - 172.31.13.240:9093
-#  - job_name: blackbox_exporter
-#    metrics_path: /metrics
-#    static_configs:
-#      - targets:
-#        - 172.31.13.240
-#  - job_name: grok_exporter
-#    metrics_path: /metrics
-#    static_configs:
-#      - targets:
-#        - 172.31.13.240:9144
-#  - job_name: test_httpserver
-#    metrics_path: /metrics
-#    static_configs:
-#      - targets:
-#        - 172.31.13.240:8080
-#        - 172.31.13.240:8081
-
-# 死活監視
-# https://qiita.com/mmorita44/items/8eca5e6fae9fd40807ce
-#  - job_name: 'blackbox_icmp'
-#    scrape_interval: 10s
-#    metrics_path: /probe
-#    params:
-#      module: [icmp] # icmp監視？pingのようなもの
-#    static_configs:
-#      - targets:
-#        - 172.31.13.240
-#    relabel_configs:
-#      - source_labels: [__address__]
-#        target_label: __param_target
-#      - source_labels: [__param_target]
-#        target_label: instance
-#      - target_label: __address__
-#        replacement: blackbox_exporter:9115
-
-# ログ監視
-# https://github.com/rongfengliang/grok-exporter-docker-compose/blob/master/prometheus.yml
-#  - job_name: grok
-#    metrics_path: /metrics
-#    scrape_interval: 10s
-#    scrape_timeout: 10s
-#    static_configs:
-#      - targets: ['172.31.13.240:9144']
+# add to scrape_configs end
