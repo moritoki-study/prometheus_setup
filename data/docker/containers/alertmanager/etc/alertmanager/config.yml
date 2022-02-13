@@ -1,6 +1,6 @@
 global:
-  # Slack の webhook URL の指定
-  slack_api_url: 'https://hooks.slack.com/services/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'
+  # Slack の webhook URL の指定 たまに無効になるらしいので再発行する
+  slack_api_url: 'https://hooks.slack.com/services/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'
 
 route:
   receiver: 'slack'
