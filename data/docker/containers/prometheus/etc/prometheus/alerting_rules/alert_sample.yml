@@ -1,16 +1,26 @@
-groups:
-- name: example.com
+# alertが出ることをFIRINGと呼ぶ。alertが出るとalertmanagerにデータ送られる
+# https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/
+groups: # アラートのグループ化をしないときは不要だと思う
+- name: example.com # example.comに関してのアラートをグループを作ったのだと思う。システム名やDNS名がいいのかな
   rules:
+    # alert: アラート名
     - alert: instance_down
       # PromQLを記述。起動していないインスタンスを検出するPromQL。
-      expr: up == 0
+      expr: up == 0 # 1:が起動している状態、0が停止している状態のフラグ
       # 5分間応答がない場合アラートを上げる
-      for: 5m
+      for: 5m # 5ミニッツ（５分）同じ状態が続くとアラートが出る
       labels:
-        severity: critical
+        severity: critical # アラートをフィルタリングするときに使う情報と思う
       # エラー文言
       annotations:
+        # ANNOTATIONS内は好きなプロパティを定義できる
+        # firing_text,resolved_textを定義している理由は、alertmanagerでアラート時と復旧時の内容を切り替えるため
         # 異常時の通知メッセージ
         firing_text: "[{{ $labels.env }}] {{ $labels.instance }} has been down for more than 5 minutes."
         # リカバリー時の通知メッセージ
         resolved_text: "[{{ $labels.env }}] {{ $labels.instance }} has recoverd."
+       # labelがどういう情報をもっているのか？調べる方法がわからない
+       # {{}}は変数参照だがなんのか記法かわからない
+       # $labels.env : 現在値を取得できていない。
+       # $labels.instance : サーバ名なんでしょう
+        

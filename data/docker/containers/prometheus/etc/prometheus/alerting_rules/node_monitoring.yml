@@ -19,10 +19,20 @@ groups:
     labels:
       severity: critical
     annotations:
-      summary: Disk usage is over 90%
+      # summary: Disk usage is over 90%
+      # 異常時の通知メッセージ
+      firing_text: "disk of {{ $labels.instance }} is used over 90%"
+      # リカバリー時の通知メッセージ
+      resolved_text: "disk of {{ $labels.instance }} has recoverd."
+      description: "disk of {{ $labels.instance }} is used over 90%."
   - alert: HighDiskUsage
     expr: 100 - (node_filesystem_avail_bytes / node_filesystem_size_bytes * 100) > 30
     labels:
       severity: warning
     annotations:
-      summary: Disk usage is over 30%
+      # summary: Disk usage is over 30%
+      # 異常時の通知メッセージ
+      firing_text: "disk of {{ $labels.instance }} is used over 30%"
+      # リカバリー時の通知メッセージ
+      resolved_text: "disk of {{ $labels.instance }} has recoverd."
+      description: "disk of {{ $labels.instance }} is used over 30%."

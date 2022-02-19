@@ -21,3 +21,10 @@ receivers:
       text: '{{ if eq .Status "firing" }}{{ .CommonAnnotations.firing_text }}{{else}}{{ .CommonAnnotations.resolved_text }}{{end}}'
       # 正常に戻った際に通知をするか
       send_resolved: true
+    email_configs:
+    # メールの宛先
+    - to: "tmoritoki0227@gmail.com"
+      title: '{{ if eq .Status "firing" }}[FIRING]{{else}}[RESOLVED]{{end}} {{ .GroupLabels.alertname }}'
+      text: '{{ if eq .Status "firing" }}{{ .CommonAnnotations.firing_text }}{{else}}{{ .CommonAnnotations.resolved_text }}{{end}}'
+      # 正常に戻った際に通知をするか
+      send_resolved: true

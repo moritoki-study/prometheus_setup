@@ -2,7 +2,7 @@ groups:
 - name: test_httpserver_log
   rules:
   - alert: EmptyNameFound
-    expr: increase(a_httpserver_log_hello_total{name=""}[1m]) > 0
+    expr: increase(a_httpserver_log_hello_total{name=""}[1m]) > 0 # なんだろうか？
     labels:
       severity: critical
     annotations:
