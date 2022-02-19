@@ -1,6 +1,7 @@
 global:
   # Slack の webhook URL の指定 たまに無効になるらしいので再発行する
-  slack_api_url: 'https://hooks.slack.com/services/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'
+  # https://qiita.com/vmmhypervisor/items/18c99624a84df8b31008
+  slack_api_url: 'https://hooks.slack.com/services/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'
 
 route:
   receiver: 'slack'
@@ -22,9 +23,11 @@ receivers:
       # 正常に戻った際に通知をするか
       send_resolved: true
     email_configs:
+ 
+    # おそらくamazonlinuxにメール設定が必要
     # メールの宛先
-    - to: "tmoritoki0227@gmail.com"
-      title: '{{ if eq .Status "firing" }}[FIRING]{{else}}[RESOLVED]{{end}} {{ .GroupLabels.alertname }}'
-      text: '{{ if eq .Status "firing" }}{{ .CommonAnnotations.firing_text }}{{else}}{{ .CommonAnnotations.resolved_text }}{{end}}'
+    # - to: "XXXX@gmail.com"
+      # title: '{{ if eq .Status "firing" }}[FIRING]{{else}}[RESOLVED]{{end}} {{ .GroupLabels.alertname }}'
+      # text: '{{ if eq .Status "firing" }}{{ .CommonAnnotations.firing_text }}{{else}}{{ .CommonAnnotations.resolved_text }}{{end}}'
       # 正常に戻った際に通知をするか
-      send_resolved: true
+      # send_resolved: true
